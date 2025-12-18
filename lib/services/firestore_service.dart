@@ -1,39 +1,41 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/tarea.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../models/tarea_model.dart';
 
 class FirestoreService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final CollectionReference _tareasRef = FirebaseFirestore.instance.collection('tareas');
+  final String? _uid = FirebaseAuth.instance.currentUser?.uid;
 
-  // Referencia a la colección
-  CollectionReference get _tareasCollection => _db.collection('tareas');
-
-  // CREAR (Create)
-  Future<void> agregarTarea(Tarea tarea) async {
-    await _tareasCollection.add(tarea.toMap());
+  // Agregar
+  Future<void> addTarea(Tarea tarea) async {
+    if (_uid == null) return;
+    await _tareasRef.add(tarea.toMap());
   }
 
-  // LEER (Read) - Stream filtrado por UID del usuario actual
-  Stream<List<Tarea>> obtenerTareas(String uid) {
-    return _tareasCollection
-        .where('uid', isEqualTo: uid)
-        .orderBy('fechaLimite') // Opcional: ordenar por fecha
-        .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => Tarea.fromFirestore(doc)).toList());
-  }
-
-  // ACTUALIZAR (Update) - Editar datos o cambiar estado
-  Future<void> actualizarTarea(Tarea tarea) async {
-    await _tareasCollection.doc(tarea.id).update(tarea.toMap());
+  // Editar
+  Future<void> updateTarea(String id, Tarea tarea) async {
+    await _tareasRef.doc(id).update(tarea.toMap());
   }
   
-  // Cambiar solo el estado (útil para el checkbox rápido)
-  Future<void> cambiarEstadoTarea(String id, bool completada) async {
-    await _tareasCollection.doc(id).update({'completada': completada});
+  // Cambiar estado (Pendiente <-> Hecha)
+  Future<void> toggleEstado(String id, bool actualState) async {
+    await _tareasRef.doc(id).update({'estaCompletada': !actualState});
   }
 
-  // ELIMINAR (Delete)
-  Future<void> eliminarTarea(String id) async {
-    await _tareasCollection.doc(id).delete();
+  // Eliminar
+  Future<void> deleteTarea(String id) async {
+    await _tareasRef.doc(id).delete();
+  }
+
+  // Obtener Stream de tareas (Solo del usuario actual)
+  Stream<List<Tarea>> getTareas() {
+    if (_uid == null) return Stream.value([]);
+    
+    return _tareasRef
+        .where('uid', isEqualTo: _uid) // Seguridad por UID
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => Tarea.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+            .toList());
   }
 }
